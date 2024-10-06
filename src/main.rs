@@ -5,9 +5,6 @@ use std::simd::prelude::*;
 use raylib::{consts::*, prelude::*};
 use rayon::prelude::*;
 
-const WIDTH: usize = 800;
-const HEIGHT: usize = 800;
-const SCREEN_SIZE: Vector2 = Vector2::new(WIDTH as _, HEIGHT as _);
 const ZOOM_SPEED: f32 = 0.2;
 
 const ITER_LIMIT: u32 = 300;
@@ -20,7 +17,7 @@ struct ViewBox {
 }
 
 impl ViewBox {
-    fn square(top_left: Vector2, size: f32) -> Self {
+    fn new(top_left: Vector2, size: Vector2) -> Self {
         Self {
             min: top_left,
             max: top_left + size,
@@ -33,13 +30,13 @@ impl ViewBox {
         self
     }
 
-    fn scale(&mut self, factor: f32) -> &mut Self {
+    fn scale(&mut self, factor: Vector2) -> &mut Self {
         self.min *= factor;
         self.max *= factor;
         self
     }
 
-    fn zoom_around(&mut self, v: Vector2, factor: f32) -> &mut Self {
+    fn zoom_around(&mut self, v: Vector2, factor: Vector2) -> &mut Self {
         self.translate(v).scale(factor).translate(-v)
     }
 
@@ -50,36 +47,50 @@ impl ViewBox {
 
 fn main() {
     let (mut rl, thread) = raylib::init()
-        .size(WIDTH as _, HEIGHT as _)
-        .title("Mandelbrot Set")
+        .size(1200, 800)
+        .title("Mandelbrot Set Viewer")
+        .resizable()
         .build();
     rl.set_target_fps(60);
 
-    let mut view_box = ViewBox::square(Vector2::new(-2.0, -1.5), 3.0);
-    let mut buffer = vec![0u32; WIDTH * HEIGHT];
+    let mut width = (rl.get_screen_width() as usize).next_multiple_of(8);
+    let mut height = rl.get_screen_height() as usize;
+    let mut screen_size = Vector2::new(width as _, height as _);
+    let mut view_box = ViewBox::new(Vector2::new(-2.5, -1.5), Vector2::new(4.0, 3.0));
+    let mut buffer = vec![0u32; width * height];
 
-    mandelbrot(view_box, &mut buffer);
+    mandelbrot(view_box, &mut buffer, screen_size);
     let mut texture = rl
-        .load_texture_from_image(&thread, &render_to_image(&buffer))
+        .load_texture_from_image(&thread, &render_to_image(&buffer, screen_size))
         .unwrap();
 
     while !rl.window_should_close() {
-        let mouse_pos = rl.get_mouse_position() * view_box.range() / SCREEN_SIZE + view_box.min;
+        if rl.is_window_resized() {
+            width = (rl.get_screen_width() as usize).next_multiple_of(8);
+            height = rl.get_screen_height() as usize;
+            let new_size = Vector2::new(width as _, height as _);
+            let size_diff = (new_size - screen_size) * view_box.range() / screen_size;
+            view_box.max += size_diff * 0.5;
+            view_box.min -= size_diff * 0.5;
+            screen_size = new_size;
+            buffer.resize(width * height, 0);
+        }
+        let mouse_pos = rl.get_mouse_position() * view_box.range() / screen_size + view_box.min;
         let mouse_wheel = rl.get_mouse_wheel_move();
         let mouse_delta = if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-            rl.get_mouse_delta() * view_box.range() / SCREEN_SIZE
+            rl.get_mouse_delta() * view_box.range() / screen_size
         } else {
             Vector2::zero()
         };
 
-        if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 {
+        if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 || rl.is_window_resized() {
             view_box
                 .translate(mouse_delta)
-                .zoom_around(mouse_pos, 1.0 - ZOOM_SPEED * mouse_wheel);
+                .zoom_around(mouse_pos, Vector2::one() - ZOOM_SPEED * mouse_wheel);
 
-            mandelbrot(view_box, &mut buffer);
+            mandelbrot(view_box, &mut buffer, screen_size);
             texture = rl
-                .load_texture_from_image(&thread, &render_to_image(&buffer))
+                .load_texture_from_image(&thread, &render_to_image(&buffer, screen_size))
                 .unwrap();
         }
 
@@ -99,11 +110,12 @@ fn main() {
     }
 }
 
-fn mandelbrot(view_box: ViewBox, buffer: &mut [u32]) {
-    let d = view_box.range() / SCREEN_SIZE;
+fn mandelbrot(view_box: ViewBox, buffer: &mut [u32], screen_size: Vector2) {
+    let w = screen_size.x as usize;
+    let d = view_box.range() / screen_size;
     buffer.par_chunks_mut(8).enumerate().for_each(|(n, chunk)| {
-        let x = n * 8 % WIDTH;
-        let y = n * 8 / WIDTH;
+        let x = n * 8 % w;
+        let y = n * 8 / w;
         let points = ComplexSimd {
             real: f64x8::from_array(std::array::from_fn(|i| {
                 view_box.min.x as f64 + d.x as f64 * (x + i) as f64
@@ -114,11 +126,13 @@ fn mandelbrot(view_box: ViewBox, buffer: &mut [u32]) {
     });
 }
 
-fn render_to_image(buffer: &[u32]) -> Image {
-    let mut image = Image::gen_image_color(WIDTH as _, HEIGHT as _, Color::BLANK);
-    for y in 0..HEIGHT {
-        for x in 0..WIDTH {
-            let t = buffer[y * WIDTH + x] as f32 / ITER_LIMIT as f32;
+fn render_to_image(buffer: &[u32], screen_size: Vector2) -> Image {
+    let w = screen_size.x as usize;
+    let h = screen_size.y as usize;
+    let mut image = Image::gen_image_color(w as i32, h as i32, Color::BLANK);
+    for y in 0..h {
+        for x in 0..w {
+            let t = buffer[y * w + x] as f32 / ITER_LIMIT as f32;
             // let t = (buffer[y * WIDTH + x] as f32).log(ITER_LIMIT as f32);
             image.draw_pixel(x as i32, y as i32, Color::BLACK.alpha(t));
         }

@@ -45,6 +45,92 @@ impl ViewBox {
     }
 }
 
+struct Canvas {
+    buffer: Vec<u32>,
+    width: usize,
+    height: usize,
+    view_box: ViewBox,
+}
+
+impl Canvas {
+    fn new(width: usize, height: usize, view_box: ViewBox) -> Self {
+        Self {
+            buffer: vec![0; width * height],
+            width,
+            height,
+            view_box,
+        }
+    }
+
+    fn resize(&mut self, width: usize, height: usize) {
+        let old_size = self.size();
+        let new_size = Vector2::new(width as _, height as _);
+        let size_diff = (new_size - old_size) * self.view_box.range() / old_size;
+        self.view_box.max += size_diff * 0.5;
+        self.view_box.min -= size_diff * 0.5;
+        self.width = width;
+        self.height = height;
+        self.buffer.resize(width * height, 0);
+    }
+
+    fn pan(&mut self, delta: Vector2) {
+        self.view_box.translate(delta);
+    }
+
+    fn zoom(&mut self, pos: Vector2, value: f32) {
+        self.view_box
+            .zoom_around(pos, Vector2::one() - ZOOM_SPEED * value);
+    }
+
+    fn size(&self) -> Vector2 {
+        Vector2::new(self.width as _, self.height as _)
+    }
+
+    fn screen_to_world(&self, v: Vector2) -> Vector2 {
+        v * self.view_box.range() / self.size() + self.view_box.min
+    }
+
+    fn render_to_image(&self) -> Image {
+        let mut image = Image::gen_image_color(self.width as i32, self.height as i32, Color::BLANK);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let t = self.buffer[y * self.width + x] * 255 / ITER_LIMIT;
+                // let t = (buffer[y * WIDTH + x] as f32).log(ITER_LIMIT as f32);
+                image.draw_pixel(
+                    x as i32,
+                    y as i32,
+                    Color {
+                        r: 0x18,
+                        g: t.try_into().unwrap(),
+                        b: 0x18,
+                        a: 0xFF,
+                    },
+                );
+            }
+        }
+        image
+    }
+}
+
+fn mandelbrot(canvas: &mut Canvas) {
+    let d = canvas.view_box.range() / canvas.size();
+    canvas
+        .buffer
+        .par_chunks_mut(8)
+        .enumerate()
+        .for_each(|(n, chunk)| {
+            let x = n * 8 % canvas.width;
+            let y = n * 8 / canvas.width;
+            let points = ComplexSimd {
+                real: f64x8::from_array(std::array::from_fn(|i| {
+                    canvas.view_box.min.x as f64 + d.x as f64 * (x + i) as f64
+                })),
+                imag: f64x8::splat(canvas.view_box.min.y as f64 + y as f64 * d.y as f64),
+            };
+            get_count_simd(&points).copy_to_slice(chunk);
+        });
+}
+
 fn main() {
     let (mut rl, thread) = raylib::init()
         .size(1200, 800)
@@ -53,44 +139,38 @@ fn main() {
         .build();
     rl.set_target_fps(60);
 
-    let mut width = (rl.get_screen_width() as usize).next_multiple_of(8);
-    let mut height = rl.get_screen_height() as usize;
-    let mut screen_size = Vector2::new(width as _, height as _);
-    let mut view_box = ViewBox::new(Vector2::new(-2.5, -1.5), Vector2::new(4.0, 3.0));
-    let mut buffer = vec![0u32; width * height];
+    let mut canvas = Canvas::new(
+        (rl.get_screen_width() as usize).next_multiple_of(8),
+        rl.get_screen_height() as usize,
+        ViewBox::new(Vector2::new(-2.5, -1.5), Vector2::new(4.0, 3.0)),
+    );
 
-    mandelbrot(view_box, &mut buffer, screen_size);
+    mandelbrot(&mut canvas);
     let mut texture = rl
-        .load_texture_from_image(&thread, &render_to_image(&buffer, screen_size))
+        .load_texture_from_image(&thread, &canvas.render_to_image())
         .unwrap();
 
     while !rl.window_should_close() {
         if rl.is_window_resized() {
-            width = (rl.get_screen_width() as usize).next_multiple_of(8);
-            height = rl.get_screen_height() as usize;
-            let new_size = Vector2::new(width as _, height as _);
-            let size_diff = (new_size - screen_size) * view_box.range() / screen_size;
-            view_box.max += size_diff * 0.5;
-            view_box.min -= size_diff * 0.5;
-            screen_size = new_size;
-            buffer.resize(width * height, 0);
+            canvas.resize(
+                (rl.get_screen_width() as usize).next_multiple_of(8),
+                rl.get_screen_height() as usize,
+            );
         }
-        let mouse_pos = rl.get_mouse_position() * view_box.range() / screen_size + view_box.min;
+        let mouse_pos = canvas.screen_to_world(rl.get_mouse_position());
         let mouse_wheel = rl.get_mouse_wheel_move();
         let mouse_delta = if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-            rl.get_mouse_delta() * view_box.range() / screen_size
+            canvas.screen_to_world(rl.get_mouse_delta()) - canvas.view_box.min
         } else {
             Vector2::zero()
         };
 
         if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 || rl.is_window_resized() {
-            view_box
-                .translate(mouse_delta)
-                .zoom_around(mouse_pos, Vector2::one() - ZOOM_SPEED * mouse_wheel);
-
-            mandelbrot(view_box, &mut buffer, screen_size);
+            canvas.pan(mouse_delta);
+            canvas.zoom(mouse_pos, mouse_wheel);
+            mandelbrot(&mut canvas);
             texture = rl
-                .load_texture_from_image(&thread, &render_to_image(&buffer, screen_size))
+                .load_texture_from_image(&thread, &canvas.render_to_image())
                 .unwrap();
         }
 
@@ -127,45 +207,6 @@ fn draw_shadowed_text(
         font_size,
         Color::YELLOW,
     );
-}
-
-fn mandelbrot(view_box: ViewBox, buffer: &mut [u32], screen_size: Vector2) {
-    let w = screen_size.x as usize;
-    let d = view_box.range() / screen_size;
-    buffer.par_chunks_mut(8).enumerate().for_each(|(n, chunk)| {
-        let x = n * 8 % w;
-        let y = n * 8 / w;
-        let points = ComplexSimd {
-            real: f64x8::from_array(std::array::from_fn(|i| {
-                view_box.min.x as f64 + d.x as f64 * (x + i) as f64
-            })),
-            imag: f64x8::splat(view_box.min.y as f64 + y as f64 * d.y as f64),
-        };
-        get_count_simd(&points).copy_to_slice(chunk);
-    });
-}
-
-fn render_to_image(buffer: &[u32], screen_size: Vector2) -> Image {
-    let w = screen_size.x as usize;
-    let h = screen_size.y as usize;
-    let mut image = Image::gen_image_color(w as i32, h as i32, Color::BLANK);
-    for y in 0..h {
-        for x in 0..w {
-            let t = buffer[y * w + x] * 255 / ITER_LIMIT;
-            // let t = (buffer[y * WIDTH + x] as f32).log(ITER_LIMIT as f32);
-            image.draw_pixel(
-                x as i32,
-                y as i32,
-                Color {
-                    r: 0x18,
-                    g: t.try_into().unwrap(),
-                    b: 0x18,
-                    a: 0xFF,
-                },
-            );
-        }
-    }
-    image
 }
 
 #[derive(Debug, Clone)]

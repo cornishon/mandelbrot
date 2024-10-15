@@ -99,15 +99,34 @@ fn main() {
         let mut d = rl.begin_drawing(&thread);
         d.clear_background(Color::LIGHTSALMON);
         d.draw_texture(&texture, 0, 0, Color::WHITE);
-        d.draw_text(&format!("{fps}"), 20, 20, 48, Color::YELLOW);
-        d.draw_text(
-            &format!("{}, {}", mouse_pos.x, mouse_pos.y),
-            mouse_screen_pos.x as i32 + 10,
-            mouse_screen_pos.y as i32 + 10,
-            24,
-            Color::YELLOW,
-        );
+        draw_shadowed_text(&mut d, &format!("{fps}"), rvec2(20, 20), 48);
+        if mouse_screen_pos != Vector2::zero() {
+            let text = format!("{}, {}", mouse_pos.x, mouse_pos.y);
+            draw_shadowed_text(&mut d, &text, mouse_screen_pos, 24);
+        }
     }
+}
+
+fn draw_shadowed_text(
+    d: &mut RaylibDrawHandle,
+    text: &str,
+    screen_position: Vector2,
+    font_size: i32,
+) {
+    d.draw_text(
+        text,
+        screen_position.x as i32 + 12,
+        screen_position.y as i32 + 12,
+        font_size,
+        Color::BLACK,
+    );
+    d.draw_text(
+        text,
+        screen_position.x as i32 + 10,
+        screen_position.y as i32 + 10,
+        font_size,
+        Color::YELLOW,
+    );
 }
 
 fn mandelbrot(view_box: ViewBox, buffer: &mut [u32], screen_size: Vector2) {
@@ -132,9 +151,18 @@ fn render_to_image(buffer: &[u32], screen_size: Vector2) -> Image {
     let mut image = Image::gen_image_color(w as i32, h as i32, Color::BLANK);
     for y in 0..h {
         for x in 0..w {
-            let t = buffer[y * w + x] as f32 / ITER_LIMIT as f32;
+            let t = buffer[y * w + x] * 255 / ITER_LIMIT;
             // let t = (buffer[y * WIDTH + x] as f32).log(ITER_LIMIT as f32);
-            image.draw_pixel(x as i32, y as i32, Color::BLACK.alpha(t));
+            image.draw_pixel(
+                x as i32,
+                y as i32,
+                Color {
+                    r: 0x18,
+                    g: t.try_into().unwrap(),
+                    b: 0x18,
+                    a: 0xFF,
+                },
+            );
         }
     }
     image

@@ -180,7 +180,7 @@ fn main() {
         d.draw_texture(&texture, 0, 0, Color::WHITE);
         draw_shadowed_text(&mut d, &format!("{fps}"), rvec2(20, 20), 48);
         if mouse_screen_pos != Vector2::zero() {
-            let text = format!("{}, {}", mouse_pos.x, mouse_pos.y);
+            let text = format!("{:.6}, {:.6}", mouse_pos.x, mouse_pos.y);
             draw_shadowed_text(&mut d, &text, mouse_screen_pos, 24);
         }
     }
@@ -192,20 +192,21 @@ fn draw_shadowed_text(
     screen_position: Vector2,
     font_size: i32,
 ) {
-    d.draw_text(
-        text,
-        screen_position.x as i32 + 12,
-        screen_position.y as i32 + 12,
-        font_size,
-        Color::BLACK,
-    );
-    d.draw_text(
-        text,
-        screen_position.x as i32 + 10,
-        screen_position.y as i32 + 10,
-        font_size,
-        Color::YELLOW,
-    );
+    const TEXT_PAD: i32 = 12;
+    const SHADOW: i32 = 2;
+    let text_size = d.measure_text(text, font_size);
+    let mut px = screen_position.x as i32;
+    let mut py = screen_position.y as i32;
+    if px + text_size + TEXT_PAD >= d.get_screen_width() {
+        px -= text_size + TEXT_PAD;
+    } else {
+        px += TEXT_PAD;
+    }
+    if py + font_size >= d.get_screen_height() {
+        py -= font_size;
+    }
+    d.draw_text(text, px + SHADOW, py + SHADOW, font_size, Color::BLACK);
+    d.draw_text(text, px, py, font_size, Color::YELLOW);
 }
 
 #[derive(Debug, Clone)]

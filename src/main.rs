@@ -56,7 +56,7 @@ impl Canvas {
     fn new(width: usize, height: usize, view_box: ViewBox) -> Self {
         Self {
             buffer: vec![0; width * height],
-            width,
+            width: width.next_multiple_of(8),
             height,
             view_box,
         }
@@ -64,13 +64,13 @@ impl Canvas {
 
     fn resize(&mut self, width: usize, height: usize) {
         let old_size = self.size();
-        let new_size = Vector2::new(width as _, height as _);
+        self.width = width.next_multiple_of(8);
+        self.height = height;
+        let new_size = self.size();
         let size_diff = (new_size - old_size) * self.view_box.range() / old_size;
         self.view_box.max += size_diff * 0.5;
         self.view_box.min -= size_diff * 0.5;
-        self.width = width;
-        self.height = height;
-        self.buffer.resize(width * height, 0);
+        self.buffer.resize(self.width * self.height, 0);
     }
 
     fn pan(&mut self, delta: Vector2) {
@@ -95,7 +95,6 @@ impl Canvas {
         for y in 0..self.height {
             for x in 0..self.width {
                 let t = self.buffer[y * self.width + x] * 255 / ITER_LIMIT;
-                // let t = (buffer[y * WIDTH + x] as f32).log(ITER_LIMIT as f32);
                 image.draw_pixel(
                     x as i32,
                     y as i32,
@@ -113,6 +112,7 @@ impl Canvas {
 }
 
 fn mandelbrot(canvas: &mut Canvas) {
+    const ROW_DELTAS: f64x8 = f64x8::from_array([0., 1., 2., 3., 4., 5., 6., 7.]);
     let d = canvas.view_box.range() / canvas.size();
     canvas
         .buffer
@@ -122,10 +122,9 @@ fn mandelbrot(canvas: &mut Canvas) {
             let x = n * 8 % canvas.width;
             let y = n * 8 / canvas.width;
             let points = ComplexSimd {
-                real: f64x8::from_array(std::array::from_fn(|i| {
-                    canvas.view_box.min.x as f64 + d.x as f64 * (x + i) as f64
-                })),
-                imag: f64x8::splat(canvas.view_box.min.y as f64 + y as f64 * d.y as f64),
+                real: f64x8::splat(canvas.view_box.min.x as f64)
+                    + f64x8::splat(d.x as f64) * (f64x8::splat(x as f64) + ROW_DELTAS),
+                imag: f64x8::splat(canvas.view_box.min.y as f64 + d.y as f64 * y as f64),
             };
             get_count_simd(&points).copy_to_slice(chunk);
         });
@@ -140,7 +139,7 @@ fn main() {
     rl.set_target_fps(60);
 
     let mut canvas = Canvas::new(
-        (rl.get_screen_width() as usize).next_multiple_of(8),
+        rl.get_screen_width() as usize,
         rl.get_screen_height() as usize,
         ViewBox::new(Vector2::new(-2.5, -1.5), Vector2::new(4.0, 3.0)),
     );
@@ -153,7 +152,7 @@ fn main() {
     while !rl.window_should_close() {
         if rl.is_window_resized() {
             canvas.resize(
-                (rl.get_screen_width() as usize).next_multiple_of(8),
+                rl.get_screen_width() as usize,
                 rl.get_screen_height() as usize,
             );
         }

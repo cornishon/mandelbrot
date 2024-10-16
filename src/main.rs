@@ -112,7 +112,7 @@ impl Canvas {
 }
 
 fn mandelbrot(canvas: &mut Canvas) {
-    const ROW_DELTAS: f64x8 = f64x8::from_array([0., 1., 2., 3., 4., 5., 6., 7.]);
+    const ROW_DELTAS: f64x8 = Simd::from_array([0., 1., 2., 3., 4., 5., 6., 7.]);
     let d = canvas.view_box.range() / canvas.size();
     canvas
         .buffer
@@ -122,9 +122,9 @@ fn mandelbrot(canvas: &mut Canvas) {
             let x = n * 8 % canvas.width;
             let y = n * 8 / canvas.width;
             let points = ComplexSimd {
-                real: f64x8::splat(canvas.view_box.min.x as f64)
-                    + f64x8::splat(d.x as f64) * (f64x8::splat(x as f64) + ROW_DELTAS),
-                imag: f64x8::splat(canvas.view_box.min.y as f64 + d.y as f64 * y as f64),
+                real: Simd::splat(canvas.view_box.min.x as f64)
+                    + Simd::splat(d.x as f64) * (Simd::splat(x as f64) + ROW_DELTAS),
+                imag: Simd::splat(canvas.view_box.min.y as f64 + d.y as f64 * y as f64),
             };
             get_count_simd(&points).copy_to_slice(chunk);
         });
@@ -217,8 +217,8 @@ struct ComplexSimd {
 
 fn get_count_simd(start: &ComplexSimd) -> u32x8 {
     let mut current = start.clone();
-    let mut count = u64x8::splat(0);
-    let threshold = f64x8::splat(THRESHOLD);
+    let mut count = Simd::splat(0u64);
+    let threshold = Simd::splat(THRESHOLD);
     for _ in 0..ITER_LIMIT {
         let rr = current.real * current.real;
         let ii = current.imag * current.imag;
@@ -226,7 +226,7 @@ fn get_count_simd(start: &ComplexSimd) -> u32x8 {
         if !undiverged_mask.any() {
             break;
         }
-        count += undiverged_mask.select(u64x8::splat(1), u64x8::splat(0));
+        count += undiverged_mask.select(Simd::splat(1), Simd::splat(0));
         let ri = current.real * current.imag;
         current.real = start.real + (rr - ii);
         current.imag = start.imag + (ri + ri);

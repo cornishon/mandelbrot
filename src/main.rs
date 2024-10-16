@@ -10,6 +10,8 @@ const ZOOM_SPEED: f32 = 0.2;
 const ITER_LIMIT: u32 = 300;
 const THRESHOLD: f64 = 4.0;
 
+const NUM_LANES: usize = 8;
+
 #[derive(Debug, Clone, Copy)]
 struct ViewBox {
     min: Vector2,
@@ -56,7 +58,7 @@ impl Canvas {
     fn new(width: usize, height: usize, view_box: ViewBox) -> Self {
         Self {
             buffer: vec![0; width * height],
-            width: width.next_multiple_of(8),
+            width: width.next_multiple_of(NUM_LANES),
             height,
             view_box,
         }
@@ -64,7 +66,7 @@ impl Canvas {
 
     fn resize(&mut self, width: usize, height: usize) {
         let old_size = self.size();
-        self.width = width.next_multiple_of(8);
+        self.width = width.next_multiple_of(NUM_LANES);
         self.height = height;
         let new_size = self.size();
         let size_diff = (new_size - old_size) * self.view_box.range() / old_size;
@@ -111,16 +113,26 @@ impl Canvas {
     }
 }
 
+const fn range_array<const N: usize>() -> [f64; N] {
+    let mut arr = [0.0; N];
+    let mut i = 0;
+    while i < N {
+        arr[i] = i as f64;
+        i += 1;
+    }
+    arr
+}
+
 fn mandelbrot(canvas: &mut Canvas) {
-    const ROW_DELTAS: f64x8 = Simd::from_array([0., 1., 2., 3., 4., 5., 6., 7.]);
+    const ROW_DELTAS: Simd<f64, NUM_LANES> = Simd::from_array(range_array());
     let d = canvas.view_box.range() / canvas.size();
     canvas
         .buffer
-        .par_chunks_mut(8)
+        .par_chunks_mut(NUM_LANES)
         .enumerate()
         .for_each(|(n, chunk)| {
-            let x = n * 8 % canvas.width;
-            let y = n * 8 / canvas.width;
+            let x = n * NUM_LANES % canvas.width;
+            let y = n * NUM_LANES / canvas.width;
             let points = ComplexSimd {
                 real: Simd::splat(canvas.view_box.min.x as f64)
                     + Simd::splat(d.x as f64) * (Simd::splat(x as f64) + ROW_DELTAS),
@@ -211,11 +223,11 @@ fn draw_shadowed_text(
 
 #[derive(Debug, Clone)]
 struct ComplexSimd {
-    real: f64x8,
-    imag: f64x8,
+    real: Simd<f64, NUM_LANES>,
+    imag: Simd<f64, NUM_LANES>,
 }
 
-fn get_count_simd(start: &ComplexSimd) -> u32x8 {
+fn get_count_simd(start: &ComplexSimd) -> Simd<u32, NUM_LANES> {
     let mut current = start.clone();
     let mut count = Simd::splat(0u64);
     let threshold = Simd::splat(THRESHOLD);

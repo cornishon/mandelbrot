@@ -96,7 +96,7 @@ impl Canvas {
         let mut image = Image::gen_image_color(self.width as i32, self.height as i32, Color::BLANK);
         for y in 0..self.height {
             for x in 0..self.width {
-                let t = self.buffer[y * self.width + x] * 255 / ITER_LIMIT;
+                let t = self.buffer[y * self.width + x] * 200 / ITER_LIMIT;
                 image.draw_pixel(
                     x as i32,
                     y as i32,
@@ -125,7 +125,8 @@ const fn range_array<const N: usize>() -> [f64; N] {
 
 fn mandelbrot(canvas: &mut Canvas) {
     const ROW_DELTAS: Simd<f64, NUM_LANES> = Simd::from_array(range_array());
-    let d = canvas.view_box.range() / canvas.size();
+    let delta = canvas.view_box.range() / canvas.size();
+    let base = canvas.view_box.min;
     canvas
         .buffer
         .par_chunks_mut(NUM_LANES)
@@ -134,9 +135,9 @@ fn mandelbrot(canvas: &mut Canvas) {
             let x = n * NUM_LANES % canvas.width;
             let y = n * NUM_LANES / canvas.width;
             let points = ComplexSimd {
-                real: Simd::splat(canvas.view_box.min.x as f64)
-                    + Simd::splat(d.x as f64) * (Simd::splat(x as f64) + ROW_DELTAS),
-                imag: Simd::splat(canvas.view_box.min.y as f64 + d.y as f64 * y as f64),
+                real: Simd::splat(base.x as f64)
+                    + Simd::splat(delta.x as f64) * (Simd::splat(x as f64) + ROW_DELTAS),
+                imag: Simd::splat(base.y as f64 + delta.y as f64 * y as f64),
             };
             get_count_simd(&points).copy_to_slice(chunk);
         });

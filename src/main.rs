@@ -56,9 +56,10 @@ struct Canvas {
 
 impl Canvas {
     fn new(width: usize, height: usize, view_box: ViewBox) -> Self {
+        let width = width.next_multiple_of(NUM_LANES);
         Self {
             buffer: vec![0; width * height],
-            width: width.next_multiple_of(NUM_LANES),
+            width,
             height,
             view_box,
         }

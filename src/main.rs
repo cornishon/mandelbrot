@@ -5,7 +5,7 @@ use std::simd::prelude::*;
 use raylib::{consts::*, prelude::*};
 use rayon::prelude::*;
 
-const ZOOM_SPEED: f32 = 0.2;
+const ZOOM_SPEED: f32 = 5.0;
 
 const ITER_LIMIT: u32 = 300;
 const THRESHOLD: f64 = 4.0;
@@ -48,7 +48,7 @@ fn main() {
 
         if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 || rl.is_window_resized() {
             canvas.pan(mouse_delta);
-            canvas.zoom(mouse_pos, mouse_wheel);
+            canvas.zoom(mouse_pos, mouse_wheel * rl.get_frame_time());
             mandelbrot(&mut canvas);
             texture = rl
                 .load_texture_from_image(&thread, canvas.render_to_image())

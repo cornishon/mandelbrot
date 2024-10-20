@@ -49,6 +49,7 @@ impl ViewBox {
 
 struct Canvas {
     buffer: Vec<u32>,
+    image: Image,
     width: usize,
     height: usize,
     view_box: ViewBox,
@@ -59,6 +60,7 @@ impl Canvas {
         let width = width.next_multiple_of(NUM_LANES);
         Self {
             buffer: vec![0; width * height],
+            image: Image::gen_image_color(width as i32, height as i32, Color::BLANK),
             width,
             height,
             view_box,
@@ -74,6 +76,7 @@ impl Canvas {
         self.view_box.max += size_diff * 0.5;
         self.view_box.min -= size_diff * 0.5;
         self.buffer.resize(self.width * self.height, 0);
+        self.image = Image::gen_image_color(self.width as _, self.height as _, Color::BLANK);
     }
 
     fn pan(&mut self, delta: Vector2) {
@@ -93,15 +96,14 @@ impl Canvas {
         v * self.view_box.range() / self.size() + self.view_box.min
     }
 
-    fn render_to_image(&self) -> Image {
-        let mut image = Image::gen_image_color(self.width as i32, self.height as i32, Color::BLANK);
+    fn render_to_image(&mut self) -> &Image {
         for y in 0..self.height {
             for x in 0..self.width {
                 let t = self.buffer[y * self.width + x] as usize;
-                image.draw_pixel(x as i32, y as i32, COLORS[t]);
+                self.image.draw_pixel(x as i32, y as i32, COLORS[t]);
             }
         }
-        image
+        &self.image
     }
 }
 
@@ -188,12 +190,12 @@ fn main() {
     let mut canvas = Canvas::new(
         rl.get_screen_width() as usize,
         rl.get_screen_height() as usize,
-        ViewBox::new(Vector2::new(-2.5, -1.5), Vector2::new(4.0, 3.0)),
+        ViewBox::new(rvec2(-2.5, -1.5), rvec2(4.0, 3.0)),
     );
 
     mandelbrot(&mut canvas);
     let mut texture = rl
-        .load_texture_from_image(&thread, &canvas.render_to_image())
+        .load_texture_from_image(&thread, canvas.render_to_image())
         .unwrap();
 
     while !rl.window_should_close() {
@@ -216,7 +218,7 @@ fn main() {
             canvas.zoom(mouse_pos, mouse_wheel);
             mandelbrot(&mut canvas);
             texture = rl
-                .load_texture_from_image(&thread, &canvas.render_to_image())
+                .load_texture_from_image(&thread, canvas.render_to_image())
                 .unwrap();
         }
 

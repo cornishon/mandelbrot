@@ -2,8 +2,12 @@
 
 use std::simd::prelude::*;
 
+use crate::options::Options;
+use clap::Parser;
 use raylib::{consts::*, prelude::*};
 use rayon::prelude::*;
+
+mod options;
 
 const ZOOM_SPEED: f32 = 5.0;
 
@@ -13,18 +17,16 @@ const THRESHOLD: f64 = 4.0;
 const NUM_LANES: usize = 8;
 
 fn main() {
+    let opts = Options::parse();
+
     let (mut rl, thread) = raylib::init()
-        .size(1200, 800)
+        .size(opts.window_size.0 as i32, opts.window_size.1 as i32)
         .title("Mandelbrot Set Viewer")
         .resizable()
         .build();
     rl.set_target_fps(60);
 
-    let mut canvas = Canvas::new(
-        rl.get_screen_width() as usize,
-        rl.get_screen_height() as usize,
-        ViewBox::new(rvec2(-2.5, -1.5), rvec2(4.0, 3.0)),
-    );
+    let mut canvas = Canvas::from_options(&opts);
 
     mandelbrot(&mut canvas);
     let mut texture = canvas.render_to_texture(&mut rl, &thread);
@@ -71,7 +73,8 @@ struct ViewBox {
 }
 
 impl ViewBox {
-    fn new(top_left: Vector2, size: Vector2) -> Self {
+    fn new_centered(center: Vector2, size: Vector2) -> Self {
+        let top_left = center - size * 0.5;
         Self {
             min: top_left,
             max: top_left + size,
@@ -107,6 +110,15 @@ struct Canvas {
 }
 
 impl Canvas {
+    fn from_options(opts: &Options) -> Self {
+        let view_size = rvec2(opts.window_size.0, opts.window_size.1) / opts.zoom / 100.0;
+        Canvas::new(
+            opts.window_size.0 as usize,
+            opts.window_size.1 as usize,
+            ViewBox::new_centered(opts.center.into(), view_size),
+        )
+    }
+
     fn new(width: usize, height: usize, view_box: ViewBox) -> Self {
         let width = width.next_multiple_of(NUM_LANES);
         Self {

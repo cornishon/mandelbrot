@@ -97,21 +97,54 @@ impl Canvas {
         let mut image = Image::gen_image_color(self.width as i32, self.height as i32, Color::BLANK);
         for y in 0..self.height {
             for x in 0..self.width {
-                let t = self.buffer[y * self.width + x] * 200 / ITER_LIMIT;
-                image.draw_pixel(
-                    x as i32,
-                    y as i32,
-                    Color {
-                        r: 0x18,
-                        g: t.try_into().unwrap(),
-                        b: 0x18,
-                        a: 0xFF,
-                    },
-                );
+                let t = self.buffer[y * self.width + x] as usize;
+                image.draw_pixel(x as i32, y as i32, COLORS[t]);
             }
         }
         image
     }
+}
+
+const COLORS_LEN: usize = 1 + ITER_LIMIT as usize;
+const COLORS: [Color; COLORS_LEN] = {
+    let mut colors = [Color::BLANK; COLORS_LEN];
+    let mut i = 0;
+    while i < COLORS_LEN {
+        let t = i as f32 / ITER_LIMIT as f32;
+        colors[i] = color_from_hsv(15.0 + t * 360.0, 0.7, 1.0 - t);
+        i += 1;
+    }
+    colors
+};
+
+const fn clamp(x: f32, a: f32, b: f32) -> f32 {
+    if x < a {
+        a
+    } else if x > b {
+        b
+    } else {
+        x
+    }
+}
+
+const fn min(a: f32, b: f32) -> f32 {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+/// https://en.wikipedia.org/wiki/HSL_and_HSV#HSV_to_RGB_alternative
+const fn color_from_hsv(hue: f32, saturation: f32, value: f32) -> Color {
+    const fn f(n: f32, h: f32) -> f32 {
+        let k = (n + h / 60.0) % 6.0;
+        clamp(min(4.0 - k, k), 0.0, 1.0)
+    }
+    let r = ((value - value * saturation * f(5.0, hue)) * 255.0) as u8;
+    let g = ((value - value * saturation * f(3.0, hue)) * 255.0) as u8;
+    let b = ((value - value * saturation * f(1.0, hue)) * 255.0) as u8;
+    Color { r, g, b, a: 255 }
 }
 
 const fn range_array<const N: usize>() -> [f64; N] {

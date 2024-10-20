@@ -12,6 +12,62 @@ const THRESHOLD: f64 = 4.0;
 
 const NUM_LANES: usize = 8;
 
+fn main() {
+    let (mut rl, thread) = raylib::init()
+        .size(1200, 800)
+        .title("Mandelbrot Set Viewer")
+        .resizable()
+        .build();
+    rl.set_target_fps(60);
+
+    let mut canvas = Canvas::new(
+        rl.get_screen_width() as usize,
+        rl.get_screen_height() as usize,
+        ViewBox::new(rvec2(-2.5, -1.5), rvec2(4.0, 3.0)),
+    );
+
+    mandelbrot(&mut canvas);
+    let mut texture = rl
+        .load_texture_from_image(&thread, canvas.render_to_image())
+        .unwrap();
+
+    while !rl.window_should_close() {
+        if rl.is_window_resized() {
+            canvas.resize(
+                rl.get_screen_width() as usize,
+                rl.get_screen_height() as usize,
+            );
+        }
+        let mouse_pos = canvas.screen_to_world(rl.get_mouse_position());
+        let mouse_wheel = rl.get_mouse_wheel_move();
+        let mouse_delta = if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
+            canvas.screen_to_world(rl.get_mouse_delta()) - canvas.view_box.min
+        } else {
+            Vector2::zero()
+        };
+
+        if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 || rl.is_window_resized() {
+            canvas.pan(mouse_delta);
+            canvas.zoom(mouse_pos, mouse_wheel);
+            mandelbrot(&mut canvas);
+            texture = rl
+                .load_texture_from_image(&thread, canvas.render_to_image())
+                .unwrap();
+        }
+
+        let fps = rl.get_fps();
+        let mouse_screen_pos = rl.get_mouse_position();
+        let mut d = rl.begin_drawing(&thread);
+        d.clear_background(Color::LIGHTSALMON);
+        d.draw_texture(&texture, 0, 0, Color::WHITE);
+        draw_shadowed_text(&mut d, &format!("{fps}"), rvec2(20, 20), 48);
+        if mouse_screen_pos != Vector2::zero() {
+            let text = format!("{:.6}, {:.6}", mouse_pos.x, mouse_pos.y);
+            draw_shadowed_text(&mut d, &text, mouse_screen_pos, 24);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct ViewBox {
     min: Vector2,
@@ -177,62 +233,6 @@ fn mandelbrot(canvas: &mut Canvas) {
             };
             get_count_simd(&points).copy_to_slice(chunk);
         });
-}
-
-fn main() {
-    let (mut rl, thread) = raylib::init()
-        .size(1200, 800)
-        .title("Mandelbrot Set Viewer")
-        .resizable()
-        .build();
-    rl.set_target_fps(60);
-
-    let mut canvas = Canvas::new(
-        rl.get_screen_width() as usize,
-        rl.get_screen_height() as usize,
-        ViewBox::new(rvec2(-2.5, -1.5), rvec2(4.0, 3.0)),
-    );
-
-    mandelbrot(&mut canvas);
-    let mut texture = rl
-        .load_texture_from_image(&thread, canvas.render_to_image())
-        .unwrap();
-
-    while !rl.window_should_close() {
-        if rl.is_window_resized() {
-            canvas.resize(
-                rl.get_screen_width() as usize,
-                rl.get_screen_height() as usize,
-            );
-        }
-        let mouse_pos = canvas.screen_to_world(rl.get_mouse_position());
-        let mouse_wheel = rl.get_mouse_wheel_move();
-        let mouse_delta = if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_LEFT) {
-            canvas.screen_to_world(rl.get_mouse_delta()) - canvas.view_box.min
-        } else {
-            Vector2::zero()
-        };
-
-        if mouse_delta != Vector2::zero() || mouse_wheel != 0.0 || rl.is_window_resized() {
-            canvas.pan(mouse_delta);
-            canvas.zoom(mouse_pos, mouse_wheel);
-            mandelbrot(&mut canvas);
-            texture = rl
-                .load_texture_from_image(&thread, canvas.render_to_image())
-                .unwrap();
-        }
-
-        let fps = rl.get_fps();
-        let mouse_screen_pos = rl.get_mouse_position();
-        let mut d = rl.begin_drawing(&thread);
-        d.clear_background(Color::LIGHTSALMON);
-        d.draw_texture(&texture, 0, 0, Color::WHITE);
-        draw_shadowed_text(&mut d, &format!("{fps}"), rvec2(20, 20), 48);
-        if mouse_screen_pos != Vector2::zero() {
-            let text = format!("{:.6}, {:.6}", mouse_pos.x, mouse_pos.y);
-            draw_shadowed_text(&mut d, &text, mouse_screen_pos, 24);
-        }
-    }
 }
 
 fn draw_shadowed_text(

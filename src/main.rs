@@ -27,9 +27,7 @@ fn main() {
     );
 
     mandelbrot(&mut canvas);
-    let mut texture = rl
-        .load_texture_from_image(&thread, canvas.render_to_image())
-        .unwrap();
+    let mut texture = canvas.render_to_texture(&mut rl, &thread);
 
     while !rl.window_should_close() {
         if rl.is_window_resized() {
@@ -50,9 +48,7 @@ fn main() {
             canvas.pan(mouse_delta);
             canvas.zoom(mouse_pos, mouse_wheel * rl.get_frame_time());
             mandelbrot(&mut canvas);
-            texture = rl
-                .load_texture_from_image(&thread, canvas.render_to_image())
-                .unwrap();
+            texture = canvas.render_to_texture(&mut rl, &thread);
         }
 
         let fps = rl.get_fps();
@@ -97,7 +93,6 @@ impl ViewBox {
     fn zoom_around(&mut self, v: Vector2, factor: Vector2) -> &mut Self {
         self.translate(v).scale(factor).translate(-v)
     }
-
     fn range(&self) -> Vector2 {
         self.max - self.min
     }
@@ -160,6 +155,11 @@ impl Canvas {
             }
         }
         &self.image
+    }
+
+    fn render_to_texture(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) -> Texture2D {
+        rl.load_texture_from_image(thread, self.render_to_image())
+            .unwrap()
     }
 }
 
